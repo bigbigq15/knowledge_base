@@ -6,9 +6,12 @@ from typing import Tuple, List, re, Dict
 
 from langchain_core.exceptions import LangChainException
 from langchain_core.messages import HumanMessage
+from minio import Minio
+from minio.deleteobjects import DeleteObject
 
 from app.clients.minio_utils import get_minio_client
 from app.conf.lm_config import lm_config
+from app.conf.minio_config import minio_config
 from app.core.load_prompt import load_prompt
 from app.import_process.agent.node_base import NodeBase
 from app.import_process.agent.state import ImportGraphState
@@ -244,5 +247,181 @@ class NodeMdImg(NodeBase):
             base64_str = base64.b64encode(img_file.read()).decode("utf-8")
         logger.info(f"图片Base64编码完成，文件：{image_path}，编码后长度：{len(base64_str)}")
         return base64_str
+
+    def _step_4_upload_and_replace(self, minio_client: Minio, doc_stem: str,
+                                   targets: List[Tuple[str, str, Tuple[str, str]]],
+                                   summaries: Dict[str, str], md_content: str) -> str:
+        """
+        步骤4：核心流程-图片上传MinIO + 合并摘要&URL + 替换MD图片引用
+        完整流程：清理MinIO旧目录 → 批量上传新图片 → 合并摘要和URL → 替换MD内容并存为新文档
+        :param minio_client: 初始化完成的MinIO客户端对象
+        :param doc_stem: 文档文件名（不含后缀），作为MinIO上传子目录名（按文档隔离）
+        :param targets: 待处理图片列表，元素为(图片文件名, 图片完整路径, 图片上下文)
+        :param summaries: 图片摘要字典，键：图片文件名，值：内容摘要
+        :param md_content: 原始MD文件内容
+        :return: 图片引用替换后的新MD内容
+        """
+        # 构造MinIO上传目录：配置根目录 + 文档主名（去除空格，避免路径问题）
+        minio_img_dir = minio_config.minio_img_dir
+        upload_dir = f"{minio_img_dir}/{doc_stem}".replace(" ","")
+        self._clean_minio_directory(minio_client, upload_dir)
+        urls = self._upload_images_batch(minio_client, upload_dir, targets)
+
+        image_info = self._merge_summary_and_url(summaries, urls)
+
+        if image_info:
+            md_content = self._process_md_file(md_content, image_info)
+        return md_content
+    def _clean_minio_directory(self, minio_client: Minio, prefix: str) -> None:
+        """
+        幂等性清理MinIO指定目录下的所有旧文件，防止重名文件内容混淆和垃圾文件堆积
+        幂等性：多次调用结果一致，无文件时不报错
+        :param minio_client: 初始化完成的MinIO客户端对象
+        :param prefix: MinIO目录前缀（要清理的目录路径）
+        """
+        try:
+            # 列出指定前缀下的所有对象（递归遍历子目录）
+            objects_to_delete = minio_client.list_objects(
+                bucket_name=minio_config.bucket_name,
+                prefix=prefix,
+                recursive=True
+            )
+            # 构造删除对象列表（列表推导式）
+            delete_list = [DeleteObject(obj.object_name) for obj in objects_to_delete]
+            if delete_list:
+                logger.info(f"开始清理MinIO旧文件，待删除文件数：{len(delete_list)}，目录：{prefix}")
+                # 批量删除对象
+                errors = minio_client.remove_objects(minio_config.bucket_name, delete_list)
+                # 遍历删除错误信息，记录异常
+                for error in errors:
+                    logger.error(f"MinIO文件删除失败：{error}")
+            else:
+                logger.info(f"MinIO目录无旧文件，无需清理：{prefix}")
+        except Exception as e:
+            logger.error(f"MinIO目录清理失败：{prefix}，错误信息：{str(e)}")\
+
+
+    def _upload_images_batch(self, minio_client: Minio, upload_dir: str,
+                             targets: List[Tuple[str, str, Tuple[str, str]]]) -> Dict[str, str]:
+        """
+        批量上传待处理图片至MinIO，返回图片文件名与访问URL的映射关系
+        :param minio_client: 初始化完成的MinIO客户端对象
+        :param upload_dir: MinIO上传根目录
+        :param targets: 待处理图片列表，元素为(图片文件名, 图片完整路径, 图片上下文)
+        :return: 图片URL字典，键：图片文件名，值：MinIO访问URL
+        """
+        urls = {}
+        for img_file, img_path, _ in targets:
+            object_name = f"{upload_dir}/{img_file}"
+            logger.info(f"构造MinIO对象名称完成：{object_name}")
+            img_url = self._upload_to_minio(minio_client, img_path, object_name)
+            if img_url is not None:
+                urls[img_file] = img_url
+        logger.info(f"图片批量上传完成，成功上传{len(urls)}/{len(targets)}张图片")
+        return urls
+
+    def _upload_to_minio(self, minio_client: Minio, local_path: str, object_name: str) -> str | None:
+        """
+        将单张本地图片上传至MinIO对象存储，并返回公网可访问URL
+        :param minio_client: 初始化完成的MinIO客户端对象
+        :param local_path: 图片本地完整路径
+        :param object_name: MinIO中要存储的对象名称（带目录）
+        :return: 图片MinIO访问URL（上传失败返回None）
+        """
+        try:
+            logger.info(f"开始上传图片至MinIO：本地路径={local_path}，MinIO对象名={object_name}")
+            # 上传本地文件至MinIO（fput_object：文件流上传，适合大文件）
+            minio_client.fput_object(
+                bucket_name=minio_config.bucket_name,  # MinIO存储桶名（从配置读取）
+                object_name=object_name,  # MinIO对象名称
+                file_path=local_path,  # 本地文件路径
+                # 自动推断图片Content-Type（如image/png、image/jpeg）
+                # 入参：文件路径字符串（可带目录，如/a/b/test.jpg、demo.tar.gz）；
+                # 返回值：元组(root, ext)，其中：
+                # root：文件主名（含目录，去掉最后一个后缀的完整部分）；
+                # ext：文件后缀（以.开头，仅包含最后一个扩展名，如.jpg、.gz，无后缀则为空字符串""）；
+                # 关键规则：仅识别 ** 最后一个.** 作为后缀分隔符，多后缀文件仅拆分最后一个（如test.tar.gz拆分为("test.tar", ".gz")）。
+                content_type=f"image/{os.path.splitext(local_path)[1][1:]}"
+            )
+
+            # 处理路径特殊字符，避免URL解析错误
+            object_name = object_name.replace("\\", "%5C")
+            # 根据配置选择HTTP/HTTPS协议
+            protocol = "https" if minio_config.minio_secure else "http"
+            # 构造MinIO基础访问URL
+            base_url = f"{protocol}://{minio_config.endpoint}/{minio_config.bucket_name}"
+            # 拼接完整图片访问URL
+            img_url = f"{base_url}/{object_name}"
+            logger.info(f"图片上传成功，访问URL：{img_url}")
+            return img_url
+        except Exception as e:
+            logger.error(f"图片上传MinIO失败：{local_path}，错误信息：{str(e)}")
+            return None
+
+    def _merge_summary_and_url(self, summaries: Dict[str, str], urls: Dict[str, str]) -> Dict[str, Tuple[str, str]]:
+        """
+        合并图片摘要字典和URL字典，过滤掉上传失败无URL的图片
+        :param summaries: 图片摘要字典，键：图片文件名，值：内容摘要
+        :param urls: 图片URL字典，键：图片文件名，值：MinIO访问URL
+        :return: 合并后的图片信息字典，键：图片文件名，值：(摘要, URL)元组
+        """
+        image_info = {}
+        for image_file, summary in summaries.items():
+            url = urls.get(image_file)
+            if url:
+                image_info[image_file] = (summary, url)
+        logger.info(f"图片摘要与URL合并完成，有效图片信息{len(image_info)}条")
+        return image_info
+
+    def _process_md_file(self, md_content: str, image_info: Dict[str, Tuple[str, str]]) -> str:
+        """
+        核心功能：替换MD内容中的本地图片引用为MinIO远程引用
+        替换规则：![原描述](本地路径) → ![图片摘要](MinIO访问URL)
+        :param md_content: 原始MD文件内容
+        :param image_info: 合并后的图片信息字典，键：图片文件名，值：(摘要, URL)
+        :return: 替换后的新MD内容
+        """
+        # 遍历 image_info 字典的每一项：key=图片文件名，value=(摘要, 新URL)
+        for img_filename, (summary, new_url) in image_info.items():
+            # 正则匹配MD图片标签，忽略大小写
+            # 正则规则：![任意描述](任意路径+图片文件名+任意后缀)
+            # re.escape: 转义图片文件名中的特殊字符，避免正则语法错误
+            pattern = re.compile(r"!\[.*?\]\(.*?" + re.escape(img_filename) + r".*?\)", re.IGNORECASE)
+
+            # 替换匹配内容：使用新摘要作为图片描述，新URL作为图片路径
+            # pattern.sub(替换规则, 待替换文本)
+            # md_content = ..., 替换后原地更新
+            md_content = pattern.sub(lambda m: f"![{summary}]({new_url})", md_content)
+            logger.info(f"完成MD图片引用替换：{img_filename} → {new_url}")
+
+        logger.info(f"MD文件图片引用替换完成，共替换{len(image_info)}处图片引用")
+        logger.info(f"替换后MD内容：{md_content[:500]}..." if len(md_content) > 500 else f"替换后MD内容：{md_content}")
+        return md_content
+
+    def _step_5_backup_new_md_file(self, origin_md_path: str, md_content: str) -> str:
+        """
+        步骤5：将处理后的MD内容保存为新文件（原文件不变，避免数据丢失）
+        新文件命名规则：原文件名 + _new.md（如test.md → test_new.md）
+        :param origin_md_path: 原始MD文件完整路径
+        :param md_content: 处理后的新MD内容
+        :return: 新MD文件的完整路径
+        """
+        # 构造新文件路径：替换原后缀为 _new.md
+        new_md_file_name = os.path.splitext(origin_md_path)[0] + "_new.md"
+
+        # 写入新MD内容（覆盖写入，若文件已存在则更新）
+        with open(new_md_file_name, "w", encoding="utf-8") as f:
+            f.write(md_content)
+
+        logger.info(f"处理后MD文件已保存，新文件路径：{new_md_file_name}")
+        return new_md_file_name
+
+
+
+
+
+
+
+
 
 
