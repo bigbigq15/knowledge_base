@@ -71,6 +71,7 @@ def generate_embeddings(texts):
         # 初始化稀疏向量处理结果，解析为字典格式（适配序列化/存储）
         processed_sparse = []
         for i in range(len(texts)):
+
             # 提取第i个文本的稀疏向量索引：np.int64 → Python int（满足字典key可哈希要求）
             sparse_indices = embeddings["sparse"].indices[
                 embeddings["sparse"].indptr[i]:embeddings["sparse"].indptr[i + 1]

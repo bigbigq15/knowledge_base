@@ -143,7 +143,7 @@ class NodeDocumentSplit(NodeBase):
                 continue
             stripped_line = line.strip()
             if stripped_line.startswith("```"):
-                in_code_block_block = not in_code_block
+                in_code_block = not in_code_block
                 current_lines.append(line)
             is_valid_title = (not in_code_block) and re.match(title_pattern, line)
             if is_valid_title:

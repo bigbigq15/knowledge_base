@@ -2,7 +2,8 @@ import base64
 import os
 from collections import deque
 from pathlib import Path
-from typing import Tuple, List, re, Dict
+from typing import Tuple, List, Dict
+import re
 
 from langchain_core.exceptions import LangChainException
 from langchain_core.messages import HumanMessage
@@ -131,7 +132,7 @@ class NodeMdImg(NodeBase):
                 continue
 
             # 组装待处理图片元数据，取第一个匹配的上下文
-            #image_file为图片目录路径,img_path为图片绝对路径带后缀,context_list为图片在md文档的相关上下文
+            #image_file为图片名字带后缀,img_path为图片绝对路径带后缀,context_list为图片在md文档的相关上下文
             targets.append((image_file, img_path, context_list[0]))
             logger.info(f"图片加入待处理列表：{image_file}")
 
