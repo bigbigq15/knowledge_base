@@ -133,7 +133,7 @@ class NodePdfToMd(NodeBase):
             # 重试逻辑：首次失败则强制指定PDF的Content-Type
             if put_resp.status_code != 200:
                 logger.warning(f"[文件上传] 首次上传失败（状态码：{put_resp.status_code}），强制指定PDF类型重试")
-                pdf_headers = {"Content-Type": "application/pdf"}
+                pdf_headers = {"Cntent-Type": "application/pdf"}
                 put_resp = upload_session.put(url=signed_url, data=file_data, headers=pdf_headers, timeout=60)
                 # 重试仍失败则抛出异常
                 if put_resp.status_code != 200:

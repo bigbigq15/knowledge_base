@@ -1,28 +1,26 @@
+from typing import Dict, Any, List
+
+from app.conf.milvus_config import milvus_config
 from app.core.logger import logger
 from app.import_process.agent.node_base import NodeBase
 from app.import_process.agent.state import ImportGraphState
 
-class NodeImportMilvus(NodeBase):
-    """
-    节点: 导入向量库 (node_import_milvus)
-    为什么叫这个名字: 将处理好的向量数据写入 Milvus 数据库。
-    未来要实现:
-    1. 连接 Milvus。
-    2. 根据 item_name 删除旧数据 (幂等性)。
-    3. 批量插入新的向量数据。
-    """
+CHUNKS_COLLECTION_NAME = milvus_config.chunks_collection
 
-    # 覆盖基类的 name 属性，标识节点名称
+class NodeImportMilvus(NodeBase):
     name: str = "node_import_milvus"
 
     def process(self, state: ImportGraphState) -> ImportGraphState:
-        """
-        节点逻辑
-        :param state: 工作流状态对象
-        :return: 更新后的状态对象
-        """
-
-        # TODO
-        logger.info(f"【{self.name}】节点逻辑")
-
+        chunks_json_data,vector_dimension = self._step_1_check_input(state)
+        client = self._step
         return state
+
+    def _step_1_check_input(self,state: Dict[str, Any]) -> tuple[List[Dict[str, Any]], int]:
+        chunks = state.get("chunks", [])
+        if not isinstance(chunks, list) or not chunks:
+            raise ValueError("核心参数chunks为空或非列表类型")
+
+
+        first_chunk = chunks[0]
+        vector_dimension = len(first_chunk.get("dense_vector"))
+        return chunks,vector_dimension
