@@ -21,13 +21,18 @@ def get_path_dir(ps:int = 0)->Path:
 
 def get_project_root(identifier: str = ".env") -> Path:
     # 第一步：优先读取环境变量（生产环境用）
+    # 读取项目的.env文件中是否有配置
     env_root = os.getenv("PROJECT_ROOT")
+    #把可能的相对路径转换为绝对路径
     if env_root and Path(env_root).absolute().exists():
         return Path(env_root).absolute()
 
     # 第二步：加载根目录的.env文件（为了后续逻辑，也可省略）
+    #获得当前文件的绝对路径的父目录
     current_dir = Path(__file__).absolute().parent
+    #递归查找.env文件
     while current_dir != current_dir.parent:
+        #父目录/.env这个文件存在的话
         if (current_dir / identifier).exists():
             load_dotenv(dotenv_path=current_dir / identifier)
             break

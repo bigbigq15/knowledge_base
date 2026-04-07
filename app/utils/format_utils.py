@@ -27,7 +27,7 @@ def format_state(state: Dict[str, Any], indent: int = 4) -> str:
             "pdf_path": "test.pdf"
         }
     """
-
+    #这个方法是把dict形式的转化为json形式,三个参数为,state为我传的dict,indent为换行空几个=空格,ensure_ascii为是否把(非 ASCII )中文转码(\uXXXX)
     return json.dumps(state, indent=indent, ensure_ascii=False)
 
 

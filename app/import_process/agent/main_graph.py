@@ -9,7 +9,7 @@ from app.core.logger import logger
 from app.import_process.agent.nodes.node_bge_embedding import NodeBgeEmbedding
 from app.import_process.agent.nodes.node_document_split import NodeDocumentSplit
 from app.import_process.agent.nodes.node_entry import NodeEntry
-from app.import_process.agent.nodes.node_import_milvus1 import NodeImportMilvus
+from app.import_process.agent.nodes.node_import_milvus import NodeImportMilvus
 from app.import_process.agent.nodes.node_item_name_recognition import NodeItemNameRecognition
 from app.import_process.agent.nodes.node_md_img import NodeMdImg
 from app.import_process.agent.nodes.node_pdf_to_md import NodePdfToMd
