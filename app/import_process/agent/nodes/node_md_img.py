@@ -15,7 +15,7 @@ from app.conf.lm_config import lm_config
 from app.conf.minio_config import minio_config
 from app.core.load_prompt import load_prompt
 from app.import_process.agent.node_base import NodeBase
-from app.import_process.agent.state import ImportGraphState
+from app.import_process.agent.state import ImportGraphState, create_default_state
 from app.core.logger import logger
 from app.lm.lm_utils import get_llm_client
 from app.utils.rate_limit_utils import apply_api_rate_limit
@@ -419,6 +419,31 @@ class NodeMdImg(NodeBase):
 
 
 
+
+if __name__ == "__main__":
+
+    import os
+    # 获取项目所在路径
+    from app.utils.path_util import PROJECT_ROOT
+
+
+    # 组装文件路径
+    md_name= os.path.join("output/hak180产品安全手册", "hak180产品安全手册.md")
+    # 组装文件的绝对路径
+    md_path = os.path.join(PROJECT_ROOT, md_name)
+    # 组装输出路径
+    local_dir = os.path.join(PROJECT_ROOT, "output")
+
+    # 当前节点图状态初始值
+    init_state = create_default_state(
+        task_id="task_001",
+        md_path=md_path,
+        md_content=""
+    )
+
+    # 执行节点的业务调用
+    node_md_img = NodeMdImg()
+    final_state = node_md_img(init_state)
 
 
 

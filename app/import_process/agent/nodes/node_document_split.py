@@ -8,8 +8,7 @@ from pycparser.c_ast import Continue
 
 from app.core.logger import logger
 from app.import_process.agent.node_base import NodeBase
-from app.import_process.agent.state import ImportGraphState
-
+from app.import_process.agent.state import ImportGraphState, create_default_state
 
 # --- 配置参数 (Configuration) ---
 # 单个Chunk最大字符长度：超过则触发二次切分（适配大模型上下文窗口）
@@ -337,4 +336,28 @@ class NodeDocumentSplit(NodeBase):
         except Exception as e:
             # 备份失败仅记录日志，不终止主流程
             logger.error(f"步骤6：Chunk结果备份失败，错误信息：{str(e)}", exc_info=False)
+
+
+
+if __name__ == "__main__":
+
+    import os
+    # 获取项目所在路径
+    from app.utils.path_util import PROJECT_ROOT
+
+    # 组装文件路径
+    md_name= os.path.join("output/hak180产品安全手册", "hak180产品安全手册_new.md")
+    # 组装文件的绝对路径
+    md_path = os.path.join(PROJECT_ROOT, md_name)
+    md_content = Path(md_path).read_text(encoding="utf-8")
+    # 当前节点图状态初始值
+    init_state = create_default_state(
+        task_id="task_001",
+        md_path=md_path,
+        md_content=md_content,
+        file_title="hak180产品安全手册"
+    )
+    # 执行节点的业务调用
+    node_document_split = NodeDocumentSplit()
+    final_state = node_document_split(init_state)
 

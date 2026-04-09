@@ -298,3 +298,29 @@ class NodePdfToMd(NodeBase):
         final_md_path = str(target_md_file.absolute())
 
         return final_md_path
+
+
+if __name__ == "__main__":
+
+    import os
+    # 获取项目所在路径
+    from app.utils.path_util import PROJECT_ROOT
+
+
+    # 组装文件路径
+    local_file= os.path.join("doc", "hak180产品安全手册.pdf")
+    # 组装文件的绝对路径
+    pdf_path = os.path.join(PROJECT_ROOT, local_file)
+    # 组装输出路径
+    local_dir = os.path.join(PROJECT_ROOT, "output")
+
+    # 当前节点图状态初始值
+    init_state = create_default_state(
+        task_id="task_001",
+        pdf_path=pdf_path,
+        local_dir=local_dir
+    )
+
+    # 执行节点的业务调用
+    node_pdf_to_md = NodePdfToMd()
+    final_state = node_pdf_to_md(init_state)

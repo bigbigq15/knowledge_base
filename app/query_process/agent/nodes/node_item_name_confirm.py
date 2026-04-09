@@ -2,7 +2,6 @@ import json
 from typing import Tuple, Dict, List
 
 from langchain_core.messages import SystemMessage, HumanMessage
-from langsmith import expect
 
 from app.clients.milvus_utils import get_milvus_client, create_hybrid_search_requests, hybrid_search
 from app.clients.mongo_history_utils import get_recent_messages, save_chat_message, update_message_item_names
