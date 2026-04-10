@@ -1,3 +1,6 @@
+import json
+import os
+from pathlib import Path
 from typing import List, Dict
 
 from app.core.logger import logger
@@ -144,7 +147,34 @@ class NodeBgeEmbedding(NodeBase):
                 raise RuntimeError(error_msg) from e #保留原始异常栈
 
         return output_data
+if __name__ == "__main__":
 
+    # 获取项目所在路径
+    from app.import_process.agent.state import create_default_state
+    from app.utils.path_util import PROJECT_ROOT
+
+    # 组装文件的绝对路径（使用 Path 对象，支持 read_text 方法）
+    chunks_path = Path(PROJECT_ROOT) / "output/hak180产品安全手册/chunks_with_item_name.json"
+    # 读取切片
+    chunks_json = chunks_path.read_text(encoding="utf-8")
+    # 将json字符串chunks转成列表
+    chunks = json.loads(chunks_json)
+    # 当前节点图状态初始值
+    init_state = create_default_state(
+        task_id="task_001",
+        chunks=chunks
+    )
+    # 执行节点的业务调用
+    node_bge_embedding = NodeBgeEmbedding()
+    final_state = node_bge_embedding(init_state)
+
+
+    #备份
+    # 组装文件的绝对路径
+    json_path = os.path.join(PROJECT_ROOT, "output", "hak180产品安全手册", "chunks_with_vector.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(final_state["chunks"], f, ensure_ascii=False, indent=2)
+    logger.info(f"Chunk结果备份成功，备份文件路径：{json_path}")
 
 
 

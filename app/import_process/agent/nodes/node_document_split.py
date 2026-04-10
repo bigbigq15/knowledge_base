@@ -60,7 +60,7 @@ class NodeDocumentSplit(NodeBase):
         # 作用：核心切分逻辑，先将超长章节按「段落→句子」二次切分，再合并同父标题的过短章节，减少碎片化
         # 额外处理：对所有Chunk做parent_title兜底，适配Milvus向量库必填字段要求
         # 输出：长度适中、语义完整、低碎片化的最终Chunk列表（可直接用于向量入库/大模型调用）
-        sections = self._step_4_refine_chunks(sections, max_len)
+        sections = self._step_4_refine_chunks(sections)
 
         # ===================================== 步骤5：输出文档切分统计信息 =====================================
         # 作用：打印核心统计数据，便于监控切分效果、调试问题（原始行数/最终Chunk数/首个Chunk预览）

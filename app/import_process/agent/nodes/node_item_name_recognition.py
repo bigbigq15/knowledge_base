@@ -1,15 +1,17 @@
+import json
+import os
 from typing import Tuple,List,Dict
 
-from Crypto.SelfTest.Cipher.test_CBC import file_name
+
 from langchain_core.messages import HumanMessage, SystemMessage
-from pyarrow import DataType
+from pymilvus import DataType
 
 from app.clients.milvus_utils import get_milvus_client
 from app.conf.milvus_config import milvus_config
 from app.core.load_prompt import load_prompt
 from app.core.logger import logger
 from app.import_process.agent.node_base import NodeBase
-from app.import_process.agent.state import ImportGraphState
+from app.import_process.agent.state import ImportGraphState, create_default_state
 from app.lm.embedding_utils import generate_embeddings
 from app.lm.lm_utils import get_llm_client
 from app.utils.milvus_utils import escape_milvus_string
@@ -438,8 +440,31 @@ class NodeItemNameRecognition(NodeBase):
 
 
 
+if __name__ == "__main__":
+
+    from app.utils.path_util import PROJECT_ROOT
+
+    chunk_path = PROJECT_ROOT / "output/hak180产品安全手册/chunks.json"
+    chunk_json = chunk_path.read_text(encoding="utf-8")
+    # print(type(chunk_json))
+    chunk_list =  json.loads(chunk_json)
+    # print(type(chunk_list))
+
+    init_state = create_default_state(
+        tast_id = "task_demo",
+        file_title = "hak180产品安全手册",
+        chunks=chunk_list
+    )
+
+    node_item_name_recognition = NodeItemNameRecognition()
+    final_state = node_item_name_recognition(init_state)
 
 
+    #将chunks中的内容进行备份
+    backup_path = os.path.join(PROJECT_ROOT, "output", "hak180产品安全手册", "chunks_with_item_name.json")
+    with open(backup_path, "w", encoding="utf-8") as f:
+        json.dump(final_state["chunks"],f,ensure_ascii=False, indent=2)
+    logger.info(f"Chunk结果备份成功，备份文件路径：{backup_path}")
 
 
 
